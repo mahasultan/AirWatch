@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AirWatch — PM2.5 Global Pollution Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #21262d;
+    --card: #161b22;
+    --border: rgba(240,246,252,0.1);
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --text3: #6e7681;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --danger: #f85149;
+    --warn: #d29922;
+    --good: #3fb950;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+  header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, #58a6ff, #3fb950); display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-text { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-sub { font-size: 11px; color: var(--text2); margin-top: -2px; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: none; border: 1px solid transparent; color: var(--text2); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: var(--font); transition: all 0.15s; }
+  nav button:hover { background: var(--bg3); color: var(--text); }
+  nav button.active { background: var(--bg3); border-color: var(--border); color: var(--text); }
+  .main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+  .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; }
+  .stat-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .stat-val { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .val-red { color: var(--danger); }
+  .val-green { color: var(--good); }
+  .val-yellow { color: var(--warn); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+  .card-title { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1rem; }
+  .chart-wrap { position: relative; }
+  select, input[type=range] { background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-family: var(--font); font-size: 13px; cursor: pointer; }
+  select:focus { outline: 1px solid var(--accent); }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+  .controls label { font-size: 12px; color: var(--text2); }
+  .search-wrap { position: relative; flex: 1; max-width: 280px; }
+  .search-wrap input { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px 6px 32px; font-family: var(--font); font-size: 13px; }
+  .search-wrap input:focus { outline: 1px solid var(--accent); }
+  .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text3); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th { text-align: left; padding: 8px 10px; font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; cursor: pointer; user-select: none; }
+  th:hover { color: var(--text); }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(240,246,252,0.05); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-critical { background: rgba(248,81,73,0.15); color: #f85149; }
+  .b-high { background: rgba(210,153,34,0.15); color: #d29922; }
+  .b-medium { background: rgba(88,166,255,0.15); color: #58a6ff; }
+  .b-low { background: rgba(63,185,80,0.15); color: #3fb950; }
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-track { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; max-width: 120px; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .map-container { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  #world-map svg { width: 100%; height: auto; }
+  .map-legend { display: flex; align-items: center; gap: 8px; margin-top: 1rem; font-size: 11px; color: var(--text2); }
+  .legend-grad { flex: 1; max-width: 200px; height: 8px; border-radius: 4px; }
+  .tooltip { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; pointer-events: none; z-index: 1000; min-width: 160px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .tooltip-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .tooltip-val { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+  .tooltip-sub { color: var(--text2); font-size: 11px; }
+  .compare-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .comp-select-wrap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .comp-select-wrap label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 60px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .region-pill { display: inline-block; padding: 1px 7px; border-radius: 12px; font-size: 10px; margin-left: 6px; font-weight: 500; }
+  .rp-sa { background: rgba(248,81,73,0.15); color: #f85149; }
+  .rp-af { background: rgba(210,153,34,0.15); color: #d29922; }
+  .rp-ea { background: rgba(88,166,255,0.15); color: #58a6ff; }
+  .rp-eu { background: rgba(63,185,80,0.15); color: #3fb950; }
+  .rp-me { background: rgba(160,132,254,0.15); color: #a084fe; }
+  .rp-la { background: rgba(255,174,0,0.15); color: #ffae00; }
+  .rp-na { background: rgba(63,185,80,0.2); color: #3fb950; }
+  .year-slider-wrap { display: flex; align-items: center; gap: 12px; }
+  .year-label { font-size: 20px; font-weight: 700; min-width: 48px; color: var(--accent); }
+  input[type=range].year-range { flex: 1; max-width: 260px; accent-color: var(--accent); }
+  .empty-state { text-align: center; padding: 3rem; color: var(--text2); }
+  .trend-up { color: var(--danger); }
+  .trend-down { color: var(--good); }
+  .trend-flat { color: var(--text2); }
+  .insight-box { background: rgba(88,166,255,0.05); border: 1px solid rgba(88,166,255,0.2); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; font-size: 13px; color: var(--text2); }
+  .insight-box strong { color: var(--text); }
+  .full-row { grid-column: 1 / -1; }
+  .pagination { display: flex; align-items: center; gap: 8px; padding-top: 12px; }
+  .pagination button { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-family: var(--font); }
+  .pagination button:hover { color: var(--text); }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pag-info { font-size: 12px; color: var(--text3); flex: 1; text-align: right; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+    </div>
+    <div>
+      <div class="logo-text">AirWatch</div>
+      <div class="logo-sub">PM2.5 Global Pollution Explorer</div>
+    </div>
+  </div>
+  <nav>
+    <button class="active" onclick="showPanel('overview')">Overview</button>
+    <button onclick="showPanel('map')">World Map</button>
+    <button onclick="showPanel('explore')">Explore Data</button>
+    <button onclick="showPanel('compare')">Compare</button>
+    <button onclick="showPanel('trends')">Trends</button>
+  </nav>
+</header>
+
+<div class="main">
+
+  <!-- STATS BAR -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat-card">
+      <div class="stat-label">Countries Tracked</div>
+      <div class="stat-val">194</div>
+      <div class="stat-sub">With 2017 data</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Exceed WHO Limit (2017)</div>
+      <div class="stat-val val-red" id="stat-exceed">—</div>
+      <div class="stat-sub">% of tracked countries</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Most Affected Region</div>
+      <div class="stat-val val-yellow" id="stat-region" style="font-size:16px;padding-top:4px;">—</div>
+      <div class="stat-sub">Average exposure</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Best Performer (2017)</div>
+      <div class="stat-val val-green" id="stat-best" style="font-size:16px;padding-top:4px;">—</div>
+      <div class="stat-sub">Lowest exposure</div>
+    </div>
+  </div>
+
+  <!-- OVERVIEW PANEL -->
+  <div id="panel-overview" class="panel active">
+    <div class="insight-box" id="overview-insight">Loading data...</div>
+    <div class="two-col" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title">Top 15 most exposed countries (2017)</div>
+        <div class="chart-wrap" style="height:360px;">
+          <canvas id="chart-top15" role="img" aria-label="Bar chart of top 15 most exposed countries by PM2.5 in 2017"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Average exposure by region (2017)</div>
+        <div class="chart-wrap" style="height:360px;">
+          <canvas id="chart-region" role="img" aria-label="Bar chart showing average PM2.5 exposure by world region in 2017"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Exposure distribution (2017)</div>
+        <div class="chart-wrap" style="height:260px;">
+          <canvas id="chart-dist" role="img" aria-label="Histogram showing distribution of PM2.5 exposure values in 2017"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Exposure by income group (2017)</div>
+        <div class="chart-wrap" style="height:260px;">
+          <canvas id="chart-income" role="img" aria-label="Box plot showing PM2.5 exposure by income group in 2017"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAP PANEL -->
+  <div id="panel-map" class="panel">
+    <div class="map-container">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <div class="card-title" style="margin:0;">World choropleth — PM2.5 population exposure (%)</div>
+        <div class="year-slider-wrap">
+          <label style="font-size:12px;color:var(--text2);">Year:</label>
+          <input type="range" class="year-range" id="map-year" min="0" max="11" value="11" step="1" oninput="updateMap()">
+          <span class="year-label" id="map-year-label">2017</span>
+        </div>
+      </div>
+      <div id="world-map"><div class="spinner"></div></div>
+      <div class="map-legend">
+        <span>0%</span>
+        <canvas id="legend-canvas" width="200" height="8" class="legend-grad"></canvas>
+        <span>100%</span>
+        <span style="margin-left:auto;color:var(--text3)">Grey = no data</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPLORE PANEL -->
+  <div id="panel-explore" class="panel">
+    <div class="card">
+      <div class="controls">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="search-input" placeholder="Search country..." oninput="filterTable()">
+        </div>
+        <label>Region:</label>
+        <select id="filter-region" onchange="filterTable()">
+          <option value="">All regions</option>
+          <option>South Asia</option>
+          <option>Sub-Saharan Africa</option>
+          <option>Middle East & North Africa</option>
+          <option>East Asia & Pacific</option>
+          <option>Europe & Central Asia</option>
+          <option>Latin America & Caribbean</option>
+          <option>North America</option>
+        </select>
+        <label>Income:</label>
+        <select id="filter-income" onchange="filterTable()">
+          <option value="">All income groups</option>
+          <option>Low income</option>
+          <option>Lower middle income</option>
+          <option>Upper middle income</option>
+          <option>High income</option>
+        </select>
+        <label>Year:</label>
+        <select id="filter-year" onchange="filterTable()">
+          <option value="2017">2017</option>
+          <option value="2016">2016</option>
+          <option value="2015">2015</option>
+          <option value="2014">2014</option>
+          <option value="2013">2013</option>
+          <option value="2012">2012</option>
+          <option value="2011">2011</option>
+          <option value="2010">2010</option>
+          <option value="2005">2005</option>
+          <option value="2000">2000</option>
+          <option value="1995">1995</option>
+          <option value="1990">1990</option>
+        </select>
+      </div>
+      <table id="data-table">
+        <thead><tr>
+          <th onclick="sortTable('rank')">#</th>
+          <th onclick="sortTable('country')">Country</th>
+          <th onclick="sortTable('region')">Region</th>
+          <th onclick="sortTable('income')">Income Group</th>
+          <th onclick="sortTable('value')">Exposure %</th>
+          <th onclick="sortTable('trend')">Trend</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <div class="pagination">
+        <button onclick="prevPage()" id="prev-btn">← Prev</button>
+        <button onclick="nextPage()" id="next-btn">Next →</button>
+        <span class="pag-info" id="pag-info"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARE PANEL -->
+  <div id="panel-compare" class="panel">
+    <div class="comp-select-wrap">
+      <label>Country A:</label>
+      <select id="cmp-a" onchange="renderCompare()" style="min-width:180px;"></select>
+      <label>Country B:</label>
+      <select id="cmp-b" onchange="renderCompare()" style="min-width:180px;"></select>
+      <label>Country C (optional):</label>
+      <select id="cmp-c" onchange="renderCompare()" style="min-width:180px;"><option value="">— None —</option></select>
+    </div>
+    <div class="two-col" id="compare-cards" style="margin-bottom:16px;"></div>
+    <div class="card full-row">
+      <div class="card-title">Historical trend comparison</div>
+      <div class="chart-wrap" style="height:320px;">
+        <canvas id="chart-compare-line" role="img" aria-label="Line chart comparing PM2.5 exposure trends for selected countries"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRENDS PANEL -->
+  <div id="panel-trends" class="panel">
+    <div class="two-col" style="margin-bottom:16px;">
+      <div class="card">
+        <div class="card-title">Global average exposure over time</div>
+        <div class="chart-wrap" style="height:280px;">
+          <canvas id="chart-global-trend" role="img" aria-label="Line chart of global average PM2.5 exposure from 1990 to 2017"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Regional trends over time</div>
+        <div class="chart-wrap" style="height:280px;">
+          <canvas id="chart-regional-trend" role="img" aria-label="Multi-line chart of regional PM2.5 exposure trends from 1990 to 2017"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Countries with biggest improvement (1990→2017)</div>
+        <div class="chart-wrap" style="height:300px;">
+          <canvas id="chart-improvers" role="img" aria-label="Bar chart showing countries with the biggest improvement in PM2.5 exposure"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Countries with biggest decline (1990→2017)</div>
+        <div class="chart-wrap" style="height:300px;">
+          <canvas id="chart-decliners" role="img" aria-label="Bar chart showing countries where PM2.5 exposure got worse"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="tooltip" id="tooltip" style="display:none;"></div>
+
+<script>
+const RAW_DATA = [{"country":"Aruba","code":"ABW","region":"Latin America & Caribbean","incomeGroup":"High income","data":{}},{"country":"Afghanistan","code":"AFG","region":"South Asia","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Angola","code":"AGO","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Albania","code":"ALB","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Andorra","code":"AND","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":99.98,"2000":99.96,"2005":100.0,"2010":99.96,"2011":100.0,"2012":99.96,"2013":97.69,"2014":16.6,"2015":90.85,"2016":17.42,"2017":17.82}},{"country":"United Arab Emirates","code":"ARE","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Argentina","code":"ARG","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":99.61,"1995":99.58,"2000":99.55,"2005":99.41,"2010":99.45,"2011":99.53,"2012":99.22,"2013":99.03,"2014":98.31,"2015":98.02,"2016":94.14,"2017":93.85}},{"country":"Armenia","code":"ARM","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"American Samoa","code":"ASM","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Antigua and Barbuda","code":"ATG","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Australia","code":"AUS","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":31.88,"1995":31.61,"2000":33.83,"2005":33.49,"2010":32.97,"2011":36.32,"2012":30.65,"2013":28.27,"2014":27.11,"2015":26.05,"2016":24.9,"2017":24.89}},{"country":"Austria","code":"AUT","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.66,"1995":99.23,"2000":98.68,"2005":99.15,"2010":98.45,"2011":99.26,"2012":97.41,"2013":95.77,"2014":93.79,"2015":91.47,"2016":85.02,"2017":85.05}},{"country":"Azerbaijan","code":"AZE","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Burundi","code":"BDI","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Belgium","code":"BEL","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.87,"1995":99.64,"2000":99.28,"2005":99.0,"2010":99.5,"2011":99.35,"2012":98.43,"2013":96.8,"2014":94.49,"2015":95.1,"2016":91.79,"2017":91.95}},{"country":"Benin","code":"BEN","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Burkina Faso","code":"BFA","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bangladesh","code":"BGD","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bulgaria","code":"BGR","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":99.95,"1995":99.95,"2000":99.96,"2005":99.96,"2010":99.96,"2011":99.96,"2012":99.96,"2013":99.97,"2014":99.97,"2015":99.97,"2016":99.89,"2017":99.89}},{"country":"Bahrain","code":"BHR","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bahamas, The","code":"BHS","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bosnia and Herzegovina","code":"BIH","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.96,"2017":99.96}},{"country":"Belarus","code":"BLR","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":99.93}},{"country":"Belize","code":"BLZ","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bermuda","code":"BMU","region":"North America","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Bolivia","code":"BOL","region":"Latin America & Caribbean","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Brazil","code":"BRA","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":89.0,"1995":89.49,"2000":90.79,"2005":89.78,"2010":90.94,"2011":91.93,"2012":86.83,"2013":85.33,"2014":77.12,"2015":74.93,"2016":67.95,"2017":68.14}},{"country":"Barbados","code":"BRB","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Brunei Darussalam","code":"BRN","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":0.0,"1995":0.0,"2000":0.0,"2005":1.76,"2010":1.77,"2011":1.77,"2012":1.77,"2013":0.0,"2014":0.0,"2015":0.0,"2016":0.0,"2017":0.0}},{"country":"Bhutan","code":"BTN","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Botswana","code":"BWA","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Central African Republic","code":"CAF","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Canada","code":"CAN","region":"North America","incomeGroup":"High income","data":{"1990":16.21,"1995":12.91,"2000":11.02,"2005":19.6,"2010":13.67,"2011":18.72,"2012":8.34,"2013":6.63,"2014":2.02,"2015":0.73,"2016":0.0,"2017":0.0}},{"country":"Switzerland","code":"CHE","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":96.43,"1995":95.1,"2000":92.73,"2005":93.58,"2010":93.0,"2011":94.79,"2012":91.82,"2013":86.91,"2014":78.5,"2015":72.31,"2016":49.34,"2017":49.3}},{"country":"Chile","code":"CHL","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":99.35,"1995":99.37,"2000":99.24,"2005":99.27,"2010":99.29,"2011":99.32,"2012":99.3,"2013":99.3,"2014":99.15,"2015":98.58,"2016":97.59,"2017":97.66}},{"country":"China","code":"CHN","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Cote d'Ivoire","code":"CIV","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Cameroon","code":"CMR","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Congo, Dem. Rep.","code":"COD","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Congo, Rep.","code":"COG","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Colombia","code":"COL","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":99.7,"1995":99.76,"2000":99.72,"2005":99.88,"2010":99.88,"2011":99.84,"2012":99.86,"2013":99.35,"2014":97.48,"2015":96.34,"2016":92.74,"2017":92.1}},{"country":"Comoros","code":"COM","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Cabo Verde","code":"CPV","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Costa Rica","code":"CRI","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":99.98,"2016":99.72,"2017":99.69}},{"country":"Cuba","code":"CUB","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Cyprus","code":"CYP","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Czechia","code":"CZE","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.98,"1995":99.98,"2000":99.97,"2005":99.97,"2010":99.97,"2011":99.97,"2012":99.94,"2013":99.93,"2014":99.92,"2015":99.83,"2016":99.67,"2017":99.68}},{"country":"Germany","code":"DEU","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.76,"1995":99.65,"2000":99.41,"2005":99.18,"2010":99.6,"2011":99.45,"2012":98.3,"2013":97.85,"2014":95.73,"2015":95.95,"2016":89.15,"2017":89.17}},{"country":"Djibouti","code":"DJI","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Dominica","code":"DMA","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Denmark","code":"DNK","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.96,"1995":99.55,"2000":97.97,"2005":97.14,"2010":96.1,"2011":98.96,"2012":85.47,"2013":78.75,"2014":82.83,"2015":75.19,"2016":57.09,"2017":56.91}},{"country":"Dominican Republic","code":"DOM","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":99.98,"2015":99.98,"2016":99.91,"2017":99.91}},{"country":"Algeria","code":"DZA","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Ecuador","code":"ECU","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":99.98,"1995":99.99,"2000":99.99,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":99.97,"2014":99.64,"2015":99.39,"2016":98.65,"2017":98.32}},{"country":"Egypt, Arab Rep.","code":"EGY","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Eritrea","code":"ERI","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Spain","code":"ESP","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":77.58,"1995":76.35,"2000":75.03,"2005":74.16,"2010":72.15,"2011":78.73,"2012":68.49,"2013":60.68,"2014":47.72,"2015":55.15,"2016":40.72,"2017":41.12}},{"country":"Estonia","code":"EST","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":26.16,"1995":6.89,"2000":5.03,"2005":5.82,"2010":6.48,"2011":6.17,"2012":1.18,"2013":0.26,"2014":0.26,"2015":0.0,"2016":0.0,"2017":0.0}},{"country":"Ethiopia","code":"ETH","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Finland","code":"FIN","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":1.63,"1995":0.67,"2000":0.0,"2005":0.72,"2010":0.74,"2011":0.74,"2012":0.0,"2013":0.0,"2014":0.0,"2015":0.0,"2016":0.0,"2017":0.0}},{"country":"Fiji","code":"FJI","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":99.99,"2015":99.98,"2016":93.69,"2017":82.8}},{"country":"France","code":"FRA","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.77,"1995":99.63,"2000":99.37,"2005":99.6,"2010":99.48,"2011":99.7,"2012":98.61,"2013":97.41,"2014":87.85,"2015":90.41,"2016":78.28,"2017":78.21}},{"country":"Micronesia, Fed. Sts.","code":"FSM","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Gabon","code":"GAB","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"United Kingdom","code":"GBR","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":91.14,"1995":89.58,"2000":88.25,"2005":88.65,"2010":87.5,"2011":90.38,"2012":84.79,"2013":82.42,"2014":72.07,"2015":71.96,"2016":67.1,"2017":66.53}},{"country":"Georgia","code":"GEO","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Ghana","code":"GHA","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Guinea","code":"GIN","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Gambia, The","code":"GMB","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Guinea-Bissau","code":"GNB","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Equatorial Guinea","code":"GNQ","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Greece","code":"GRC","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Grenada","code":"GRD","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Greenland","code":"GRL","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":98.76,"2015":98.75,"2016":80.1,"2017":80.02}},{"country":"Guatemala","code":"GTM","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Guam","code":"GUM","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":91.67,"2015":100.0,"2016":83.33,"2017":83.33}},{"country":"Guyana","code":"GUY","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.99,"2017":99.99}},{"country":"Honduras","code":"HND","region":"Latin America & Caribbean","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.98,"2017":99.98}},{"country":"Croatia","code":"HRV","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.78,"2017":99.78}},{"country":"Haiti","code":"HTI","region":"Latin America & Caribbean","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Hungary","code":"HUN","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Indonesia","code":"IDN","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":97.66,"1995":97.66,"2000":97.11,"2005":99.0,"2010":96.42,"2011":98.06,"2012":99.51,"2013":94.21,"2014":94.5,"2015":96.14,"2016":95.69,"2017":95.57}},{"country":"India","code":"IND","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Ireland","code":"IRL","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":60.3,"1995":54.96,"2000":50.34,"2005":46.54,"2010":49.34,"2011":56.88,"2012":29.96,"2013":27.36,"2014":3.61,"2015":2.72,"2016":0.27,"2017":0.27}},{"country":"Iran, Islamic Rep.","code":"IRN","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Iraq","code":"IRQ","region":"Middle East & North Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Iceland","code":"ISL","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":22.82,"1995":21.21,"2000":18.16,"2005":14.72,"2010":16.81,"2011":16.97,"2012":13.19,"2013":12.84,"2014":12.12,"2015":11.98,"2016":11.1,"2017":10.29}},{"country":"Israel","code":"ISR","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Italy","code":"ITA","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":98.81,"1995":98.77,"2000":98.53,"2005":98.42,"2010":98.11,"2011":98.58,"2012":97.85,"2013":97.26,"2014":96.58,"2015":96.75,"2016":94.55,"2017":94.78}},{"country":"Jamaica","code":"JAM","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Jordan","code":"JOR","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Japan","code":"JPN","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":92.53,"1995":92.51,"2000":91.75,"2005":92.09,"2010":92.59,"2011":92.56,"2012":89.13,"2013":89.8,"2014":87.82,"2015":88.67,"2016":75.41,"2017":76.76}},{"country":"Kazakhstan","code":"KAZ","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":97.97,"1995":97.47,"2000":96.82,"2005":96.8,"2010":97.21,"2011":97.53,"2012":96.22,"2013":95.66,"2014":91.61,"2015":92.64,"2016":87.15,"2017":87.41}},{"country":"Kenya","code":"KEN","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Kyrgyz Republic","code":"KGZ","region":"Europe & Central Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":99.83,"2000":99.86,"2005":99.86,"2010":100.0,"2011":100.0,"2012":99.84,"2013":99.78,"2014":98.07,"2015":99.11,"2016":97.41,"2017":97.43}},{"country":"Cambodia","code":"KHM","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Kiribati","code":"KIR","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Korea, Rep.","code":"KOR","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Kuwait","code":"KWT","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Lao PDR","code":"LAO","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Lebanon","code":"LBN","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Liberia","code":"LBR","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Libya","code":"LBY","region":"Middle East & North Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"St. Lucia","code":"LCA","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Sri Lanka","code":"LKA","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":69.06,"2017":45.54}},{"country":"Lesotho","code":"LSO","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Lithuania","code":"LTU","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.94,"1995":99.94,"2000":99.94,"2005":99.94,"2010":99.94,"2011":99.94,"2012":99.94,"2013":99.93,"2014":99.93,"2015":99.53,"2016":97.07,"2017":96.0}},{"country":"Luxembourg","code":"LUX","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":99.66,"2005":96.44,"2010":99.87,"2011":99.88,"2012":90.91,"2013":89.43,"2014":78.02,"2015":79.98,"2016":68.73,"2017":68.78}},{"country":"Latvia","code":"LVA","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":99.98,"1995":99.61,"2000":99.36,"2005":99.51,"2010":99.55,"2011":99.26,"2012":97.97,"2013":96.59,"2014":96.63,"2015":92.27,"2016":89.41,"2017":89.01}},{"country":"Morocco","code":"MAR","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Moldova","code":"MDA","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Madagascar","code":"MDG","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Maldives","code":"MDV","region":"South Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":0.0,"2015":0.0,"2016":0.0,"2017":0.0}},{"country":"Mexico","code":"MEX","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":99.96,"1995":99.96,"2000":99.94,"2005":99.94,"2010":99.94,"2011":99.95,"2012":99.93,"2013":99.91,"2014":99.76,"2015":99.72,"2016":99.66,"2017":99.66}},{"country":"Marshall Islands","code":"MHL","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"North Macedonia","code":"MKD","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Mali","code":"MLI","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Malta","code":"MLT","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Myanmar","code":"MMR","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Montenegro","code":"MNE","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Mongolia","code":"MNG","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":96.57,"1995":96.36,"2000":97.48,"2005":97.8,"2010":98.14,"2011":98.36,"2012":98.07,"2013":97.71,"2014":96.83,"2015":97.95,"2016":96.83,"2017":97.01}},{"country":"Northern Mariana Islands","code":"MNP","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":30.77,"2015":34.62,"2016":26.92,"2017":26.92}},{"country":"Mozambique","code":"MOZ","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Mauritania","code":"MRT","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Mauritius","code":"MUS","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Malawi","code":"MWI","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Malaysia","code":"MYS","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":94.96,"1995":95.17,"2000":95.46,"2005":97.88,"2010":97.0,"2011":97.48,"2012":98.17,"2013":94.02,"2014":92.01,"2015":93.51,"2016":90.42,"2017":90.54}},{"country":"Namibia","code":"NAM","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Niger","code":"NER","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Nigeria","code":"NGA","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Nicaragua","code":"NIC","region":"Latin America & Caribbean","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":99.93,"2005":99.94,"2010":99.94,"2011":99.94,"2012":99.94,"2013":99.94,"2014":99.93,"2015":99.93,"2016":99.9,"2017":99.9}},{"country":"Netherlands","code":"NLD","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":99.87,"2014":99.83,"2015":99.81,"2016":99.6,"2017":99.6}},{"country":"Norway","code":"NOR","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":33.31,"1995":29.62,"2000":24.47,"2005":10.17,"2010":11.89,"2011":31.41,"2012":2.89,"2013":2.24,"2014":2.25,"2015":2.02,"2016":2.03,"2017":2.04}},{"country":"Nepal","code":"NPL","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"New Zealand","code":"NZL","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":8.86,"1995":8.71,"2000":10.75,"2005":10.28,"2010":9.82,"2011":9.78,"2012":4.47,"2013":0.35,"2014":0.35,"2015":0.35,"2016":0.0,"2017":0.0}},{"country":"Oman","code":"OMN","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Pakistan","code":"PAK","region":"South Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Panama","code":"PAN","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":96.5,"1995":96.45,"2000":97.31,"2005":96.93,"2010":96.22,"2011":97.23,"2012":96.61,"2013":93.48,"2014":90.53,"2015":87.29,"2016":72.13,"2017":71.64}},{"country":"Peru","code":"PER","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":99.97,"2016":99.97,"2017":99.96}},{"country":"Philippines","code":"PHL","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":99.71,"2014":99.02,"2015":99.43,"2016":96.82,"2017":96.37}},{"country":"Papua New Guinea","code":"PNG","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Poland","code":"POL","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":99.98,"2015":100.0,"2016":99.97,"2017":99.97}},{"country":"Puerto Rico","code":"PRI","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":1.83,"1995":1.83,"2000":63.3,"2005":62.39,"2010":62.39,"2011":71.56,"2012":45.87,"2013":32.11,"2014":15.6,"2015":14.68,"2016":3.67,"2017":3.67}},{"country":"Korea, Dem. People's Rep.","code":"PRK","region":"East Asia & Pacific","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Portugal","code":"PRT","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":54.49,"1995":48.87,"2000":49.85,"2005":58.43,"2010":53.01,"2011":57.45,"2012":30.88,"2013":30.9,"2014":25.18,"2015":27.46,"2016":14.72,"2017":16.01}},{"country":"Paraguay","code":"PRY","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":98.94,"2017":99.06}},{"country":"West Bank and Gaza","code":"PSE","region":"Middle East & North Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Qatar","code":"QAT","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Romania","code":"ROU","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":99.58,"2013":99.41,"2014":98.52,"2015":99.38,"2016":97.91,"2017":98.02}},{"country":"Russian Federation","code":"RUS","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":96.51,"1995":95.31,"2000":95.85,"2005":95.82,"2010":96.29,"2011":95.82,"2012":95.32,"2013":93.45,"2014":93.32,"2015":91.83,"2016":91.71,"2017":91.61}},{"country":"Rwanda","code":"RWA","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Saudi Arabia","code":"SAU","region":"Middle East & North Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Sudan","code":"SDN","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Senegal","code":"SEN","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Singapore","code":"SGP","region":"East Asia & Pacific","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Solomon Islands","code":"SLB","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":99.92}},{"country":"Sierra Leone","code":"SLE","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"El Salvador","code":"SLV","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Somalia","code":"SOM","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Serbia","code":"SRB","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"South Sudan","code":"SSD","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Sao Tome and Principe","code":"STP","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Suriname","code":"SUR","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Slovak Republic","code":"SVK","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Slovenia","code":"SVN","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":99.84,"2013":99.84,"2014":99.79,"2015":99.79,"2016":99.47,"2017":99.49}},{"country":"Sweden","code":"SWE","region":"Europe & Central Asia","incomeGroup":"High income","data":{"1990":7.24,"1995":5.37,"2000":4.99,"2005":4.0,"2010":4.33,"2011":5.88,"2012":3.6,"2013":3.48,"2014":3.68,"2015":3.56,"2016":3.6,"2017":3.64}},{"country":"Eswatini","code":"SWZ","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Seychelles","code":"SYC","region":"Sub-Saharan Africa","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Syrian Arab Republic","code":"SYR","region":"Middle East & North Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Chad","code":"TCD","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Togo","code":"TGO","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Thailand","code":"THA","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Tajikistan","code":"TJK","region":"Europe & Central Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Turkmenistan","code":"TKM","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Timor-Leste","code":"TLS","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Tonga","code":"TON","region":"East Asia & Pacific","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.81,"2017":99.81}},{"country":"Trinidad and Tobago","code":"TTO","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Tunisia","code":"TUN","region":"Middle East & North Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Turkiye","code":"TUR","region":"Europe & Central Asia","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Tanzania","code":"TZA","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Uganda","code":"UGA","region":"Sub-Saharan Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Ukraine","code":"UKR","region":"Europe & Central Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Uruguay","code":"URY","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":83.41,"1995":84.37,"2000":89.82,"2005":77.48,"2010":85.46,"2011":93.26,"2012":60.51,"2013":55.39,"2014":28.74,"2015":26.44,"2016":22.4,"2017":22.39}},{"country":"United States","code":"USA","region":"North America","incomeGroup":"High income","data":{"1990":48.0,"1995":44.69,"2000":43.08,"2005":44.22,"2010":38.21,"2011":46.69,"2012":28.66,"2013":20.84,"2014":11.73,"2015":8.47,"2016":3.33,"2017":3.34}},{"country":"Uzbekistan","code":"UZB","region":"Europe & Central Asia","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"St. Vincent and the Grenadines","code":"VCT","region":"Latin America & Caribbean","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Venezuela, RB","code":"VEN","region":"Latin America & Caribbean","incomeGroup":"Unknown","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":99.93,"2017":99.93}},{"country":"Virgin Islands (U.S.)","code":"VIR","region":"Latin America & Caribbean","incomeGroup":"High income","data":{"1990":50.0,"1995":50.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":50.0,"2015":50.0,"2016":40.0,"2017":40.0}},{"country":"Viet Nam","code":"VNM","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Vanuatu","code":"VUT","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Samoa","code":"WSM","region":"East Asia & Pacific","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Yemen, Rep.","code":"YEM","region":"Middle East & North Africa","incomeGroup":"Low income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"South Africa","code":"ZAF","region":"Sub-Saharan Africa","incomeGroup":"Upper middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Zambia","code":"ZMB","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}},{"country":"Zimbabwe","code":"ZWE","region":"Sub-Saharan Africa","incomeGroup":"Lower middle income","data":{"1990":100.0,"1995":100.0,"2000":100.0,"2005":100.0,"2010":100.0,"2011":100.0,"2012":100.0,"2013":100.0,"2014":100.0,"2015":100.0,"2016":100.0,"2017":100.0}}];
+
+const YEARS = ['1990','1995','2000','2005','2010','2011','2012','2013','2014','2015','2016','2017'];
+const DATA = RAW_DATA.filter(d => Object.keys(d.data).length > 0);
+const REGION_COLORS = {
+  'South Asia': '#f85149',
+  'Sub-Saharan Africa': '#d29922',
+  'Middle East & North Africa': '#a084fe',
+  'East Asia & Pacific': '#58a6ff',
+  'Europe & Central Asia': '#3fb950',
+  'Latin America & Caribbean': '#ffae00',
+  'North America': '#79c0ff'
+};
+
+function getVal(d, yr) { return d.data[yr] !== undefined ? d.data[yr] : null; }
+function statusBadge(v) {
+  if (v === null) return '<span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text3)">N/A</span>';
+  if (v >= 90) return '<span class="badge b-critical">Critical</span>';
+  if (v >= 60) return '<span class="badge b-high">High</span>';
+  if (v >= 25) return '<span class="badge b-medium">Medium</span>';
+  return '<span class="badge b-low">Low</span>';
+}
+function barHtml(v) {
+  if (v === null) return '—';
+  const color = v >= 90 ? '#f85149' : v >= 60 ? '#d29922' : v >= 25 ? '#58a6ff' : '#3fb950';
+  return `<div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${v}%;background:${color}"></div></div><span>${v.toFixed(1)}%</span></div>`;
+}
+function trendArrow(d) {
+  const v90 = getVal(d, '1990'), v17 = getVal(d, '2017');
+  if (v90 === null || v17 === null) return '<span class="trend-flat">—</span>';
+  const diff = v17 - v90;
+  if (diff < -5) return `<span class="trend-down">↓ ${Math.abs(diff).toFixed(1)}pp</span>`;
+  if (diff > 5) return `<span class="trend-up">↑ ${diff.toFixed(1)}pp</span>`;
+  return `<span class="trend-flat">→ ${diff > 0 ? '+' : ''}${diff.toFixed(1)}pp</span>`;
+}
+
+// Stats
+const data2017 = DATA.filter(d => d.data['2017'] !== undefined);
+const exceed = data2017.filter(d => d.data['2017'] > 10).length;
+document.getElementById('stat-exceed').textContent = Math.round(exceed/data2017.length*100) + '%';
+const regionAvg = {};
+['South Asia','Sub-Saharan Africa','Middle East & North Africa','East Asia & Pacific','Europe & Central Asia','Latin America & Caribbean','North America'].forEach(r => {
+  const rData = data2017.filter(d => d.region === r);
+  regionAvg[r] = rData.reduce((s,d) => s + d.data['2017'], 0) / rData.length;
+});
+const worstRegion = Object.entries(regionAvg).sort((a,b) => b[1]-a[1])[0];
+document.getElementById('stat-region').textContent = worstRegion[0];
+const best = data2017.sort((a,b) => a.data['2017'] - b.data['2017'])[0];
+document.getElementById('stat-best').textContent = best.country;
+
+// Insight
+document.getElementById('overview-insight').innerHTML = `<strong>Key Finding:</strong> As of 2017, <strong>${exceed} out of ${data2017.length}</strong> countries tracked (${Math.round(exceed/data2017.length*100)}%) have populations where more than 10% of people are exposed to PM2.5 levels exceeding WHO guidelines. South Asia and Sub-Saharan Africa are the most severely affected regions, while Northern Europe and Canada show the most dramatic improvements since 1990.`;
+
+// Charts
+function buildOverviewCharts() {
+  const top15 = [...data2017].sort((a,b) => b.data['2017']-a.data['2017']).slice(0,15);
+  const bot15 = [...data2017].sort((a,b) => a.data['2017']-b.data['2017']).slice(0,10);
+  
+  new Chart(document.getElementById('chart-top15'), {
+    type: 'bar',
+    data: { labels: top15.map(d => d.country), datasets: [{ label: '% population exposed', data: top15.map(d => d.data['2017']), backgroundColor: top15.map(d => REGION_COLORS[d.region] || '#58a6ff'), borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, y: { grid: { display: false }, ticks: { color: '#e6edf3', font: { size: 11 } } } } }
+  });
+
+  const regionLabels = Object.keys(regionAvg);
+  new Chart(document.getElementById('chart-region'), {
+    type: 'bar',
+    data: { labels: regionLabels.map(r => r.replace(' & ', '\n& ')), datasets: [{ label: 'Average %', data: regionLabels.map(r => +regionAvg[r].toFixed(1)), backgroundColor: regionLabels.map(r => REGION_COLORS[r]), borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, x: { grid: { display: false }, ticks: { color: '#e6edf3', font: { size: 10 } } } } }
+  });
+
+  const bins = [0,10,20,30,40,50,60,70,80,90,100];
+  const counts = bins.slice(0,-1).map((lo,i) => data2017.filter(d => d.data['2017'] >= lo && d.data['2017'] < bins[i+1]).length);
+  counts[counts.length-1] += data2017.filter(d => d.data['2017'] === 100).length;
+  new Chart(document.getElementById('chart-dist'), {
+    type: 'bar',
+    data: { labels: bins.slice(0,-1).map((v,i) => `${v}-${bins[i+1]}%`), datasets: [{ label: 'Countries', data: counts, backgroundColor: '#58a6ff88', borderColor: '#58a6ff', borderWidth: 1, borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45 } } } }
+  });
+
+  const incomeGroups = ['Low income','Lower middle income','Upper middle income','High income'];
+  const incomeAvgs = incomeGroups.map(ig => {
+    const vals = data2017.filter(d => d.incomeGroup === ig).map(d => d.data['2017']);
+    return vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : 0;
+  });
+  const incomeColors = ['#f85149','#d29922','#58a6ff','#3fb950'];
+  new Chart(document.getElementById('chart-income'), {
+    type: 'bar',
+    data: { labels: ['Low income','Lower middle','Upper middle','High income'], datasets: [{ label: 'Average %', data: incomeAvgs, backgroundColor: incomeColors, borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, x: { grid: { display: false }, ticks: { color: '#e6edf3' } } } }
+  });
+}
+buildOverviewCharts();
+
+// TABLE
+let tableData = [...DATA];
+let sortCol = 'value', sortDir = 1;
+let page = 0;
+const PAGE_SIZE = 20;
+
+function filterTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const reg = document.getElementById('filter-region').value;
+  const inc = document.getElementById('filter-income').value;
+  const yr = document.getElementById('filter-year').value;
+  tableData = DATA.filter(d => {
+    if (q && !d.country.toLowerCase().includes(q)) return false;
+    if (reg && d.region !== reg) return false;
+    if (inc && d.incomeGroup !== inc) return false;
+    if (!d.data[yr]) return false;
+    return true;
+  });
+  page = 0;
+  renderTable();
+}
+
+function sortTable(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = 1; }
+  renderTable();
+}
+
+function renderTable() {
+  const yr = document.getElementById('filter-year').value;
+  const sorted = [...tableData].sort((a,b) => {
+    let va, vb;
+    if (sortCol === 'country') { va = a.country; vb = b.country; }
+    else if (sortCol === 'region') { va = a.region; vb = b.region; }
+    else if (sortCol === 'income') { va = a.incomeGroup; vb = b.incomeGroup; }
+    else if (sortCol === 'value') { va = getVal(a,yr)??-1; vb = getVal(b,yr)??-1; }
+    else if (sortCol === 'rank') { va = getVal(a,yr)??-1; vb = getVal(b,yr)??-1; }
+    else if (sortCol === 'trend') {
+      const da = (getVal(a,'2017')??0) - (getVal(a,'1990')??0);
+      const db = (getVal(b,'2017')??0) - (getVal(b,'1990')??0);
+      return (da - db) * sortDir;
+    }
+    if (typeof va === 'string') return va.localeCompare(vb) * sortDir;
+    return (va - vb) * sortDir;
+  });
+  const start = page * PAGE_SIZE;
+  const slice = sorted.slice(start, start + PAGE_SIZE);
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = slice.map((d, i) => {
+    const v = getVal(d, yr);
+    return `<tr><td style="color:var(--text3)">${start+i+1}</td><td><strong>${d.country}</strong></td><td><span style="font-size:12px;color:${REGION_COLORS[d.region]||'#8b949e'}">${d.region}</span></td><td style="font-size:12px;color:var(--text2)">${d.incomeGroup}</td><td>${barHtml(v)}</td><td>${trendArrow(d)}</td><td>${statusBadge(v)}</td></tr>`;
+  }).join('');
+  document.getElementById('pag-info').textContent = `${start+1}–${Math.min(start+PAGE_SIZE, sorted.length)} of ${sorted.length}`;
+  document.getElementById('prev-btn').disabled = page === 0;
+  document.getElementById('next-btn').disabled = (page+1)*PAGE_SIZE >= sorted.length;
+}
+function prevPage() { if (page > 0) { page--; renderTable(); } }
+function nextPage() { page++; renderTable(); }
+filterTable();
+
+// MAP
+const MAP_YEARS = ['1990','1995','2000','2005','2010','2011','2012','2013','2014','2015','2016','2017'];
+let mapChart = null;
+
+function updateMap() {
+  const idx = +document.getElementById('map-year').value;
+  const yr = MAP_YEARS[idx];
+  document.getElementById('map-year-label').textContent = yr;
+  if (mapChart) {
+    const dataMap = {};
+    DATA.forEach(d => { if (d.data[yr] !== undefined) dataMap[d.code] = d.data[yr]; });
+    d3.selectAll('#world-map path').attr('fill', d => {
+      const code = d.id ? numToAlpha(d.id) : null;
+      if (!code) return '#2d333b';
+      const cEntry = DATA.find(x => x.code === numToAlpha(d.id));
+      if (!cEntry || cEntry.data[yr] === undefined) return '#2d333b';
+      return colorScale(cEntry.data[yr]);
+    });
+  }
+}
+
+const colorScale = d3.scaleSequential().domain([0, 100]).interpolator(t => {
+  const stops = ['#1a4a2e','#2d7a4f','#6cc35a','#f5c518','#f0862e','#e53e3e','#9b1c1c'];
+  const i = Math.min(Math.floor(t * (stops.length-1)), stops.length-2);
+  const u = (t * (stops.length-1)) - i;
+  return d3.interpolateRgb(stops[i], stops[i+1])(u);
+});
+
+function numToAlpha(numId) {
+  const m = {'4':'AFG','8':'ALB','12':'DZA','24':'AGO','32':'ARG','36':'AUS','40':'AUT','50':'BGD','56':'BEL','64':'BTN','68':'BOL','76':'BRA','100':'BGR','104':'MMR','116':'KHM','120':'CMR','124':'CAN','144':'LKA','152':'CHL','156':'CHN','170':'COL','178':'COG','180':'COD','191':'HRV','192':'CUB','196':'CYP','203':'CZE','208':'DNK','218':'ECU','818':'EGY','222':'SLV','231':'ETH','233':'EST','246':'FIN','250':'FRA','276':'DEU','288':'GHA','300':'GRC','320':'GTM','324':'GIN','344':'HKG','348':'HUN','356':'IND','360':'IDN','364':'IRN','368':'IRQ','372':'IRL','376':'ISR','380':'ITA','388':'JAM','392':'JPN','400':'JOR','398':'KAZ','404':'KEN','408':'PRK','410':'KOR','414':'KWT','418':'LAO','422':'LBN','430':'LBR','218':'LBY','440':'LTU','442':'LUX','446':'MAC','484':'MEX','496':'MNG','504':'MAR','508':'MOZ','516':'NAM','524':'NPL','528':'NLD','554':'NZL','558':'NIC','566':'NGA','578':'NOR','586':'PAK','591':'PAN','598':'PNG','604':'PER','608':'PHL','616':'POL','620':'PRT','630':'PRI','634':'QAT','642':'ROU','643':'RUS','646':'RWA','682':'SAU','686':'SEN','694':'SLE','703':'SVK','705':'SVN','706':'SOM','724':'ESP','752':'SWE','756':'CHE','760':'SYR','764':'THA','768':'TGO','780':'TTO','788':'TUN','792':'TUR','800':'UGA','804':'UKR','784':'ARE','826':'GBR','840':'USA','858':'URY','860':'UZB','862':'VEN','704':'VNM','887':'YEM','710':'ZAF','894':'ZMB','716':'ZWE','232':'ERI','262':'DJI','266':'GAB','288':'GHA','364':'IRN'};
+  return m[String(numId)] || null;
+}
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
+  const mapDiv = document.getElementById('world-map');
+  mapDiv.innerHTML = '';
+  const w = mapDiv.clientWidth || 800;
+  const h = Math.round(w * 0.5);
+  const svg = d3.select('#world-map').append('svg').attr('viewBox', `0 0 ${w} ${h}`).attr('width', '100%');
+  const projection = d3.geoNaturalEarth1().scale(w/6.5).translate([w/2, h/2]);
+  const path = d3.geoPath(projection);
+  const yr = MAP_YEARS[+document.getElementById('map-year').value];
+  const tooltip = document.getElementById('tooltip');
+  
+  svg.selectAll('path').data(topojson.feature(world, world.objects.countries).features)
+    .join('path')
+    .attr('d', path)
+    .attr('stroke', '#0d1117')
+    .attr('stroke-width', 0.5)
+    .attr('fill', d => {
+      const entry = DATA.find(x => x.code === numToAlpha(d.id));
+      if (!entry || entry.data[yr] === undefined) return '#2d333b';
+      return colorScale(entry.data[yr]);
+    })
+    .on('mouseover', (event, d) => {
+      const entry = DATA.find(x => x.code === numToAlpha(d.id));
+      if (!entry) return;
+      const curYr = MAP_YEARS[+document.getElementById('map-year').value];
+      const v = entry.data[curYr];
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = `<div class="tooltip-name">${entry.country}</div><div class="tooltip-val" style="color:${v !== undefined ? colorScale(v) : '#8b949e'}">${v !== undefined ? v.toFixed(1)+'%' : 'No data'}</div><div class="tooltip-sub">${entry.region} · ${entry.incomeGroup}</div>`;
+    })
+    .on('mousemove', event => {
+      tooltip.style.left = (event.clientX + 12) + 'px';
+      tooltip.style.top = (event.clientY - 10) + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.display = 'none'; });
+  
+  mapChart = svg;
+  
+  const lc = document.getElementById('legend-canvas');
+  const ctx = lc.getContext('2d');
+  for (let i = 0; i <= 200; i++) {
+    ctx.fillStyle = colorScale(i/2);
+    ctx.fillRect(i, 0, 1, 8);
+  }
+});
+
+// COMPARE
+const allCountries = DATA.filter(d => Object.keys(d.data).length >= 4).map(d => d.country).sort();
+['cmp-a','cmp-b','cmp-c'].forEach((id, i) => {
+  const sel = document.getElementById(id);
+  if (id === 'cmp-c') sel.innerHTML = '<option value="">— None —</option>';
+  allCountries.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+});
+document.getElementById('cmp-a').value = 'Qatar';
+document.getElementById('cmp-b').value = 'United States';
+document.getElementById('cmp-c').value = 'Germany';
+
+let compareLineChart = null;
+function renderCompare() {
+  const codes = ['cmp-a','cmp-b','cmp-c'].map(id => document.getElementById(id).value).filter(Boolean);
+  const selected = codes.map(name => DATA.find(d => d.country === name)).filter(Boolean);
+  const colors = ['#f85149','#58a6ff','#3fb950'];
+  
+  const cardsDiv = document.getElementById('compare-cards');
+  cardsDiv.innerHTML = selected.map((d, i) => {
+    const v17 = getVal(d,'2017');
+    const v90 = getVal(d,'1990');
+    const diff = (v17 !== null && v90 !== null) ? (v17 - v90).toFixed(1) : 'N/A';
+    return `<div class="card" style="border-top: 3px solid ${colors[i]}">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">${d.country}</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${d.region} · ${d.incomeGroup}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:var(--bg3);border-radius:8px;padding:10px">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">2017 exposure</div>
+          <div style="font-size:22px;font-weight:700;color:${v17 > 50 ? '#f85149' : v17 > 20 ? '#d29922' : '#3fb950'}">${v17 !== null ? v17.toFixed(1)+'%' : 'N/A'}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:10px">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Change 1990–2017</div>
+          <div style="font-size:22px;font-weight:700;color:${parseFloat(diff) < 0 ? '#3fb950' : '#f85149'}">${diff !== 'N/A' ? (diff > 0 ? '+' : '') + diff + 'pp' : 'N/A'}</div>
+        </div>
+      </div>
+      ${statusBadge(v17)}
+    </div>`;
+  }).join('');
+
+  if (compareLineChart) { compareLineChart.destroy(); compareLineChart = null; }
+  const canvas = document.getElementById('chart-compare-line');
+  compareLineChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: YEARS,
+      datasets: selected.map((d, i) => ({
+        label: d.country,
+        data: YEARS.map(y => getVal(d, y)),
+        borderColor: colors[i],
+        backgroundColor: colors[i] + '22',
+        tension: 0.3,
+        fill: false,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2
+      }))
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b949e', boxWidth: 12 } } }, scales: { y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', callback: v => v+'%' } }, x: { grid: { display: false }, ticks: { color: '#8b949e' } } } }
+  });
+}
+renderCompare();
+
+// TRENDS
+function buildTrendCharts() {
+  const globalAvg = YEARS.map(yr => {
+    const vals = DATA.filter(d => d.data[yr] !== undefined).map(d => d.data[yr]);
+    return +(vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(2);
+  });
+  new Chart(document.getElementById('chart-global-trend'), {
+    type: 'line',
+    data: { labels: YEARS, datasets: [{ label: 'Global avg %', data: globalAvg, borderColor: '#58a6ff', backgroundColor: '#58a6ff22', tension: 0.3, fill: true, pointRadius: 4, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 60, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', callback: v => v+'%' } }, x: { grid: { display: false }, ticks: { color: '#8b949e' } } } }
+  });
+
+  const regions = Object.keys(REGION_COLORS);
+  new Chart(document.getElementById('chart-regional-trend'), {
+    type: 'line',
+    data: {
+      labels: YEARS,
+      datasets: regions.map(r => ({
+        label: r.replace(' & ','/').replace(' Asia','').replace(' Africa','').replace('Latin America','LatAm'),
+        data: YEARS.map(yr => {
+          const vals = DATA.filter(d => d.region === r && d.data[yr] !== undefined).map(d => d.data[yr]);
+          return vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : null;
+        }),
+        borderColor: REGION_COLORS[r],
+        tension: 0.3,
+        fill: false,
+        pointRadius: 3,
+        borderWidth: 1.5
+      }))
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b949e', boxWidth: 10, font: { size: 10 } } } }, scales: { y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', callback: v => v+'%' } }, x: { grid: { display: false }, ticks: { color: '#8b949e' } } } }
+  });
+
+  const withBothYears = DATA.filter(d => d.data['1990'] !== undefined && d.data['2017'] !== undefined);
+  const changes = withBothYears.map(d => ({ country: d.country, change: d.data['2017'] - d.data['1990'] }));
+  const improvers = changes.filter(c => c.change < 0).sort((a,b) => a.change - b.change).slice(0, 12);
+  const decliners = changes.filter(c => c.change > 0).sort((a,b) => b.change - a.change).slice(0, 12);
+  
+  new Chart(document.getElementById('chart-improvers'), {
+    type: 'bar',
+    data: { labels: improvers.map(c => c.country), datasets: [{ label: 'Change (pp)', data: improvers.map(c => +c.change.toFixed(1)), backgroundColor: '#3fb95088', borderColor: '#3fb950', borderWidth: 1, borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, y: { grid: { display: false }, ticks: { color: '#e6edf3', font: { size: 10 } } } } }
+  });
+  
+  new Chart(document.getElementById('chart-decliners'), {
+    type: 'bar',
+    data: { labels: decliners.map(c => c.country), datasets: [{ label: 'Change (pp)', data: decliners.map(c => +c.change.toFixed(1)), backgroundColor: '#f8514988', borderColor: '#f85149', borderWidth: 1, borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e' } }, y: { grid: { display: false }, ticks: { color: '#e6edf3', font: { size: 10 } } } } }
+  });
+}
+
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'trends') buildTrendCharts();
+}
+</script>
+</body>
+</html>
